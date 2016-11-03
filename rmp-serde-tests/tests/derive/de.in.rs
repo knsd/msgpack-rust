@@ -16,7 +16,7 @@ fn pass_newtype() {
     #[derive(Debug, PartialEq, Deserialize)]
     struct Struct(u32);
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Struct = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Struct(42), actual);
@@ -30,7 +30,7 @@ fn pass_tuple_struct() {
     #[derive(Debug, PartialEq, Deserialize)]
     struct Decoded(u32, u32);
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Decoded = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Decoded(42, 100500), actual);
@@ -44,7 +44,7 @@ fn pass_struct() {
     #[derive(Debug, PartialEq, Deserialize)]
     struct Decoded { id: u32, value: u32 };
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Decoded = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Decoded { id: 42, value: 100500 }, actual);
@@ -71,7 +71,7 @@ fn pass_struct_map() {
     let cur = Cursor::new(&buf[..]);
 
     // It appears no special behavior is needed for deserializing structs encoded as maps.
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Struct = Deserialize::deserialize(&mut de).unwrap();
     let expected = Struct { et: "voila".into(), le: 0, shit: 1 };
 
@@ -91,11 +91,11 @@ fn pass_enum() {
         B,
     }
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Enum = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Enum::B, actual);
-    assert_eq!(3, de.get_ref().position());
+    assert_eq!(3, de.get_ref().rd.position());
 }
 
 #[test]
@@ -110,11 +110,11 @@ fn pass_tuple_enum_with_arg() {
         B(u32),
     }
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Enum = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Enum::B(42), actual);
-    assert_eq!(4, de.get_ref().position())
+    assert_eq!(4, de.get_ref().rd.position())
 }
 
 #[test]
@@ -129,11 +129,11 @@ fn pass_tuple_enum_with_args() {
         B(u32, u32),
     }
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Enum = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Enum::B(42, 58), actual);
-    assert_eq!(5, de.get_ref().position())
+    assert_eq!(5, de.get_ref().rd.position())
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn fail_enum_sequence_mismatch() {
         B,
     }
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Result<Enum> = Deserialize::deserialize(&mut de);
 
     match actual.err().unwrap() {
@@ -169,7 +169,7 @@ fn fail_enum_overflow() {
         A,
     }
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Result<Enum> = Deserialize::deserialize(&mut de);
 
     match actual.err().unwrap() {
@@ -190,11 +190,11 @@ fn pass_struct_enum_with_arg() {
         B { id: u32 },
     }
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Enum = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Enum::B { id: 42 }, actual);
-    assert_eq!(4, de.get_ref().position())
+    assert_eq!(4, de.get_ref().rd.position())
 }
 
 #[test]
@@ -212,11 +212,11 @@ fn pass_enum_with_nested_struct() {
         B,
     }
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Enum = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Enum::A(Nested("le message".into())), actual);
-    assert_eq!(buf.len() as u64, de.get_ref().position())
+    assert_eq!(buf.len() as u64, de.get_ref().rd.position())
 }
 
 #[cfg(disabled)]  // This test doesn't actually compile anymore
@@ -263,11 +263,11 @@ fn pass_enum_custom_policy() {
         }
     }
 
-    let mut de = CustomDeserializer { inner: Deserializer::new(cur) };
+    let mut de = CustomDeserializer { inner: Deserializer::from_read(cur) };
     let actual: Enum = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Enum::B, actual);
-    assert_eq!(2, de.inner.get_ref().position());
+    assert_eq!(2, de.inner.get_ref().rd.position());
 }
 
 #[test]
@@ -281,7 +281,7 @@ fn pass_serialize_struct_variant() {
     let out_second = vec![0x92, 0x01, 0x91, 0x2a];
 
     for (expected, out) in vec![(Custom::First{ data: 42 }, out_first), (Custom::Second { data: 42 }, out_second)] {
-        let mut de = Deserializer::new(Cursor::new(&out[..]));
+        let mut de = Deserializer::from_read(Cursor::new(&out[..]));
         let val: Custom = Deserialize::deserialize(&mut de).unwrap();
         assert_eq!(expected, val);
     }
@@ -299,9 +299,9 @@ fn pass_enum_with_one_arg() {
         V2,
     }
 
-    let mut de = Deserializer::new(cur);
+    let mut de = Deserializer::from_read(cur);
     let actual: Enum = Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(Enum::V1(vec![1, 2]), actual);
-    assert_eq!(buf.len() as u64, de.get_ref().position())
+    assert_eq!(buf.len() as u64, de.get_ref().rd.position())
 }

@@ -18,7 +18,7 @@ fn round_trip_option() {
     let mut data = vec![];
     expected.serialize(&mut rmp_serde::encode::Serializer::new(&mut data)).unwrap();
 
-    let mut de = rmp_serde::decode::Deserializer::new(Cursor::new(&data[..]));
+    let mut de = rmp_serde::decode::Deserializer::from_read(Cursor::new(&data[..]));
     let actual: Foo = serde::Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(expected, actual);
@@ -36,7 +36,7 @@ fn round_trip_cow() {
     let mut data = vec![];
     expected.serialize(&mut rmp_serde::encode::Serializer::new(&mut data)).unwrap();
 
-    let mut de = rmp_serde::decode::Deserializer::new(Cursor::new(&data[..]));
+    let mut de = rmp_serde::decode::Deserializer::from_read(Cursor::new(&data[..]));
     let actual: Foo = serde::Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(expected, actual);
@@ -58,7 +58,7 @@ fn round_trip_option_cow() {
     let mut data = vec![];
     expected.serialize(&mut rmp_serde::encode::Serializer::new(&mut data)).unwrap();
 
-    let mut de = rmp_serde::decode::Deserializer::new(Cursor::new(&data[..]));
+    let mut de = rmp_serde::decode::Deserializer::from_read(Cursor::new(&data[..]));
     let actual: Foo = serde::Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(expected, actual);
@@ -81,7 +81,7 @@ fn round_enum_with_nested_struct() {
     let mut data = vec![];
     expected.serialize(&mut rmp_serde::encode::Serializer::new(&mut data)).unwrap();
 
-    let mut de = rmp_serde::decode::Deserializer::new(&data[..]);
+    let mut de = rmp_serde::decode::Deserializer::from_read(&data[..]);
     let actual: Enum = serde::Deserialize::deserialize(&mut de).unwrap();
 
     assert_eq!(expected, actual);

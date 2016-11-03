@@ -33,6 +33,6 @@ fn bench_strings(bencher: &mut Bencher, size: usize) {
     vec.serialize(&mut rmp_serde::Serializer::new(&mut buf)).unwrap();
 
     bencher.iter(|| {
-        <Vec<String>>::deserialize(&mut rmp_serde::Deserializer::new(&buf[..])).unwrap();
+        <Vec<String>>::deserialize(&mut rmp_serde::Deserializer::from_read(&buf[..])).unwrap();
     })
 }

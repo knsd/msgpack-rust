@@ -1,6 +1,6 @@
 use std::error;
 use std::fmt::{self, Display, Formatter};
-use std::io::Read;
+use std::io;
 use std::str::{self, Utf8Error};
 
 use byteorder::{self, ReadBytesExt};
@@ -203,7 +203,6 @@ impl From<serde::de::value::Error> for Error {
 // TODO: Docs. Examples.
 pub struct Deserializer<R: Read> {
     rd: R,
-    buf: Vec<u8>,
     decoding_option: bool,
     depth: usize,
 }
@@ -222,17 +221,29 @@ macro_rules! stack_protector(
     }
 );
 
-impl<R: Read> Deserializer<R> {
+impl<'a> Deserializer<SliceReader<'a>> {
     // TODO: Docs.
-    pub fn new(rd: R) -> Deserializer<R> {
+    pub fn from_slice(slice: &'a [u8]) -> Self {
         Deserializer {
-            rd: rd,
-            buf: Vec::with_capacity(128),
+            rd: SliceReader::new(slice),
             decoding_option: false,
             depth: 1024,
         }
     }
+}
 
+impl<R: io::Read> Deserializer<ReadReader<R>> {
+    // TODO: Docs.
+    pub fn from_read(rd: R) -> Self {
+        Deserializer {
+            rd: ReadReader::new(rd),
+            decoding_option: false,
+            depth: 1024,
+        }
+    }
+}
+
+impl<R: Read> Deserializer<R> {
     /// Gets a reference to the underlying reader in this decoder.
     pub fn get_ref(&self) -> &R {
         &self.rd
@@ -254,17 +265,12 @@ impl<R: Read> Deserializer<R> {
     }
 
     fn read_str_data(&mut self, len: u32) -> Result<&str, Error> {
-        self.buf.resize(len as usize, 0u8);
-
-        try!(self.rd.read_exact(&mut self.buf[..]).map_err(Error::InvalidDataRead));
-        str::from_utf8(&self.buf).map_err(From::from)
+        let slice = try!(self.read_bin_data(len));
+        str::from_utf8(slice).map_err(From::from)
     }
 
     fn read_bin_data(&mut self, len: u32) -> Result<&[u8], Error> {
-        self.buf.resize(len as usize, 0u8);
-
-        try!(self.rd.read_exact(&mut self.buf[..len as usize]).map_err(Error::InvalidDataRead));
-        Ok(&self.buf[..len as usize])
+        self.rd.read_slice(len as usize).map_err(Error::InvalidDataRead)
     }
 
     fn read_array<V>(&mut self, len: u32, mut visitor: V) -> Result<V::Value, Error>
@@ -573,4 +579,84 @@ impl<'a, R: Read> serde::de::VariantVisitor for VariantVisitor<'a, R> {
     {
         serde::de::Deserializer::deserialize_tuple(self.de, fields.len(), visitor)
     }
+}
+
+pub trait Read: io::Read {
+    fn read_slice<'r>(&'r mut self, len: usize) -> io::Result<&'r [u8]>;
+}
+
+struct SliceReader<'a> {
+    pub inner: &'a [u8],
+}
+
+impl<'a> SliceReader<'a> {
+    fn new(slice: &'a [u8]) -> Self {
+        SliceReader {
+            inner: slice,
+        }
+    }
+}
+
+impl<'a> Read for SliceReader<'a> {
+    #[inline]
+    fn read_slice<'r>(&'r mut self, len: usize) -> io::Result<&'r [u8]> {
+        if len > self.inner.len() {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Unexpected EOF"))
+        }
+        let (a, b) = self.inner.split_at(len);
+        self.inner = b;
+        Ok(a)
+    }
+}
+
+impl<'r> io::Read for SliceReader<'r> {
+    #[inline]
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.read(buf)
+    }
+
+    #[inline]
+    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        self.inner.read_exact(buf)
+    }
+}
+
+struct ReadReader<R: io::Read> {
+    pub rd: R,
+    pub buf: Vec<u8>
+}
+
+impl<R: io::Read> ReadReader<R> {
+    fn new(rd: R) -> Self {
+        ReadReader {
+            rd: rd,
+            buf: Vec::with_capacity(128),
+        }
+    }
+}
+
+impl<R: io::Read> Read for ReadReader<R> {
+    fn read_slice<'r>(&'r mut self, len: usize) -> io::Result<&'r [u8]> {
+        self.buf.resize(len as usize, 0u8);
+
+        try!(self.rd.read_exact(&mut self.buf[..len as usize]));
+
+        Ok(&self.buf[..len as usize])
+    }
+}
+
+impl<R: io::Read> io::Read for ReadReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.rd.read(buf)
+    }
+}
+
+#[test]
+fn test_slice_read() {
+    let buf = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let mut slice_reader = SliceReader::new(&buf[..]);
+    assert_eq!(slice_reader.read_slice(1).unwrap(), &[0]);
+    assert_eq!(slice_reader.read_slice(6).unwrap(), &[1, 2, 3, 4, 5, 6]);
+    assert!(slice_reader.read_slice(5).is_err());
+    assert_eq!(slice_reader.read_slice(4).unwrap(), &[7, 8, 9, 10]);
 }
